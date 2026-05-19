@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { useTaskStore } from '@/stores/taskStore';
 import { useCharacterStore } from '@/stores/characterStore';
 import { useGameStore } from '@/stores/gameStore';
+import { useInventoryStore } from '@/stores/inventoryStore';
 import { useUIStore } from '@/stores/uiStore';
 import {
   calculateTaskXP,
@@ -35,10 +36,13 @@ export function useTaskCompletion() {
   const decrementLegendaryCompleted = useGameStore((s) => s.decrementLegendaryCompleted);
   const updateDailyQuestProgress = useGameStore((s) => s.updateDailyQuestProgress);
   const incrementCombo = useGameStore((s) => s.incrementCombo);
-  const resetCombo = useGameStore((s) => s.resetCombo);
+  const decrementCombo = useGameStore((s) => s.decrementCombo);
   const tryDropGem = useGameStore((s) => s.tryDropGem);
   const consumeShield = useGameStore((s) => s.consumeShield);
   const isDoubleXPActive = useGameStore((s) => s.isDoubleXPActive);
+  const consumeGoldBoost = useGameStore((s) => s.consumeGoldBoost);
+  const consumeGemBoost = useGameStore((s) => s.consumeGemBoost);
+  const getActiveGemEffects = useGameStore((s) => s.getActiveGemEffects);
   const checkAndSpawnBoss = useGameStore((s) => s.checkAndSpawnBoss);
   const checkStoryChapter = useGameStore((s) => s.checkStoryChapter);
   const checkAchievements = useGameStore((s) => s.checkAchievements);
@@ -53,18 +57,31 @@ export function useTaskCompletion() {
 
       const char = useCharacterStore.getState().character;
       const streaks = useGameStore.getState().streaks;
+      const gemEffects = getActiveGemEffects();
 
       const early = isEarlyCompletion(task.dueDate);
       const streakMult = getStreakMultiplier(streaks.currentStreak);
       let xp = calculateTaskXP(task.difficulty, early, streakMult, char.stats.intelligence);
       let gold = calculateTaskGold(task.difficulty, early, char.stats.strength);
+      if (gemEffects.xpBoost > 0) {
+        xp = Math.round(xp * (1 + gemEffects.xpBoost / 100));
+      }
+      if (gemEffects.goldBoost > 0) {
+        gold = Math.round(gold * (1 + gemEffects.goldBoost / 100));
+      }
 
       // Combo
       const comboCount = incrementCombo();
       if (comboCount >= 2) {
-        const comboBonus = Math.min(comboCount * 0.05, 0.5); // +5% per combo, max 50%
+        const comboStep = 0.05 * (1 + gemEffects.comboBoost / 100);
+        const comboBonus = Math.min(comboCount * comboStep, 0.75);
         xp = Math.round(xp * (1 + comboBonus));
         gold = Math.round(gold * (1 + comboBonus));
+      }
+
+      if (consumeGoldBoost()) {
+        gold = Math.round(gold * 1.2);
+        addToast({ type: 'gold', message: '🪙 贡献点增幅生效！+20%' });
       }
 
       // Double XP (consumed on use)
@@ -74,7 +91,40 @@ export function useTaskCompletion() {
         addToast({ type: 'info', message: '⚡ 双倍经验生效！已消耗。' });
       }
 
+      // Check overdue damage FIRST (penalty before reward)
+      const allTasks = useTaskStore.getState().tasks;
+      let deadFromOverdue = false;
+      for (const t of allTasks) {
+        if (t.id === taskId) continue;
+        if (t.status === 'done') continue;
+        if (isOverdue(t.dueDate)) {
+          const shielded = consumeShield();
+          if (shielded) {
+            addToast({ type: 'info', message: `🛡️ 护盾抵挡了「${t.title}」的逾期伤害！` });
+          } else {
+            const damage = calculateDeadlineDamage(t.difficulty, char.stats.agility);
+            takeDamage(damage);
+            triggerShake();
+            sound.damage();
+            petMood('sad');
+            addToast({ type: 'damage', message: `-${damage} 生命（逾期: ${t.title}）` });
+            const charAfterDmg = useCharacterStore.getState().character;
+            if (charAfterDmg.currentHP <= 0) {
+              useCharacterStore.getState().resetAfterDeath();
+              openModal('death');
+              useGameStore.getState().resetStreak();
+              deadFromOverdue = true;
+            }
+          }
+          break;
+        }
+      }
+
       completeTask(taskId, xp, gold);
+
+      if (deadFromOverdue) {
+        addToast({ type: 'info', message: '任务已标记完成，但你因逾期伤害倒下了...' });
+      }
 
       const { leveledUp, newLevel } = gainXP(xp);
       gainGold(gold);
@@ -131,13 +181,22 @@ export function useTaskCompletion() {
       }
 
       // Gem drop
-      const gem = tryDropGem(task.difficulty);
+      const gemChanceMultiplier = consumeGemBoost() ? 2 : 1;
+      if (gemChanceMultiplier > 1) {
+        addToast({ type: 'info', message: '💎 宝石探针生效！掉率翻倍。' });
+      }
+      const gem = tryDropGem(task.difficulty, gemChanceMultiplier);
       if (gem) {
         addToast({ type: 'achievement', message: `💎 获得技能宝石：${gem.name}！` });
         sound.purchase();
       }
+      if (gem && gemEffects.doubleLoot > 0 && Math.random() < gemEffects.doubleLoot / 100) {
+        const extraGem = tryDropGem(task.difficulty, 999);
+        if (extraGem) {
+          addToast({ type: 'achievement', message: `✨ 双倍掉落：${extraGem.name}！` });
+        }
+      }
 
-      const state = useGameStore.getState();
       const boss = checkAndSpawnBoss(char.level);
       if (boss) {
         sound.bossSpawn();
@@ -161,37 +220,23 @@ export function useTaskCompletion() {
             type: 'achievement',
             message: `🏆 ${achievement.name}`,
           });
+          if (achievement.rewardGold > 0) {
+            gainGold(achievement.rewardGold);
+            addToast({
+              type: 'gold',
+              message: `成就奖励 +${achievement.rewardGold} 金币`,
+              amount: achievement.rewardGold,
+            });
+          }
+          if (achievement.rewardItemId) {
+            const itemAdded = useInventoryStore.getState().purchaseItem(achievement.rewardItemId);
+            if (itemAdded) {
+              addToast({ type: 'achievement', message: `🎁 获得奖励物品：${achievement.rewardItemId}` });
+            }
+          }
         }
       }
 
-      const allTasks = useTaskStore.getState().tasks;
-      for (const t of allTasks) {
-        if (t.id === taskId) continue;
-        if (t.status === 'done') continue;
-        if (isOverdue(t.dueDate)) {
-          // Shield protects from damage
-          const shielded = consumeShield();
-          if (shielded) {
-            addToast({ type: 'info', message: `🛡️ 护盾抵挡了「${t.title}」的逾期伤害！` });
-          } else {
-            const damage = calculateDeadlineDamage(t.difficulty, char.stats.agility);
-            takeDamage(damage);
-            triggerShake();
-            sound.damage();
-            petMood('sad');
-            addToast({ type: 'damage', message: `-${damage} 生命（逾期: ${t.title}）` });
-          }
-
-          // Check for death from overdue damage
-          const charAfterDmg = useCharacterStore.getState().character;
-          if (charAfterDmg.currentHP <= 0) {
-            useCharacterStore.getState().resetAfterDeath();
-            openModal('death');
-            useGameStore.getState().resetStreak();
-          }
-          break;
-        }
-      }
     },
     [
       completeTask,
@@ -219,7 +264,7 @@ export function useTaskCompletion() {
       const goldEarned = task.goldEarned || 0;
 
       undoCompleteTask(taskId);
-      resetCombo();
+      decrementCombo();
       sound.undo();
 
       if (xpEarned > 0) loseXP(xpEarned);

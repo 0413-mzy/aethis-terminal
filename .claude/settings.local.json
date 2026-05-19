@@ -4,7 +4,8 @@
       "Bash(curl -s http://localhost:3000)",
       "Bash(pkill -f \"next dev\")",
       "Bash(npm run *)",
-      "Bash(pkill -9 -f \"next\")"
+      "Bash(pkill -9 -f \"next\")",
+      "WebFetch(domain:aethis-terminal.vercel.app)"
     ]
   }
 }

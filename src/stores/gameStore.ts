@@ -34,7 +34,10 @@ interface GameState {
   skillGems: SkillGem[];
   shieldActive: boolean;
   doubleXpActive: boolean;
+  nextGoldBoostActive: boolean;
+  nextGemBoostActive: boolean;
   focusMode: boolean;
+  focusBoostUnlocked: boolean;
   unlockedChapters: string[];
   storyChapterUnlocked: string | null;
 
@@ -57,8 +60,9 @@ interface GameState {
   updateDailyQuestProgress: (taskDifficulty: string, hasTags: boolean, hasSubtasks: boolean, isHighPriority: boolean) => void;
   claimDailyQuest: (questId: string) => { xp: number; gold: number } | null;
   incrementCombo: () => number;
+  decrementCombo: () => void;
   resetCombo: () => void;
-  tryDropGem: (difficulty: string) => SkillGem | null;
+  tryDropGem: (difficulty: string, chanceMultiplier?: number) => SkillGem | null;
   socketGem: (id: string) => void;
   unsocketGem: (id: string) => void;
   activateShield: () => void;
@@ -66,7 +70,12 @@ interface GameState {
   activateDoubleXP: () => void;
   consumeDoubleXP: () => boolean;
   isDoubleXPActive: () => boolean;
+  activateGoldBoost: () => void;
+  consumeGoldBoost: () => boolean;
+  activateGemBoost: () => void;
+  consumeGemBoost: () => boolean;
   toggleFocusMode: () => void;
+  unlockFocusBoost: () => void;
   checkStoryChapter: (playerLevel: number, bossDefeatedId?: string) => StoryChapter | null;
   dismissStoryChapter: () => void;
   getActiveGemEffects: () => { comboBoost: number; bossCrit: number; xpBoost: number; goldBoost: number; damageReduce: number; doubleLoot: number; cooldownReduction: number };
@@ -80,6 +89,13 @@ const defaultStreak: Streak = {
 };
 
 const initialDailyQuests = generateDailyQuests();
+const bossStoryOrder = [
+  'procrastination-dragon',
+  'burnout-behemoth',
+  'perfectionist-phantom',
+  'distraction-demon',
+  'overwhelm-ogre',
+];
 
 export const useGameStore = create<GameState>()(
   persist(
@@ -103,7 +119,10 @@ export const useGameStore = create<GameState>()(
       skillGems: [],
       shieldActive: false,
       doubleXpActive: false,
+      nextGoldBoostActive: false,
+      nextGemBoostActive: false,
       focusMode: false,
+      focusBoostUnlocked: false,
       unlockedChapters: [],
       storyChapterUnlocked: null,
 
@@ -177,7 +196,10 @@ export const useGameStore = create<GameState>()(
         if (state.bossBattle && state.bossBattle.status === 'active') return null;
 
         if (shouldSpawnBoss(state.totalTasksCompleted, state.bossDefeatCount, state.bossBattle !== null)) {
-          const bossDef = BOSSES[Math.floor(Math.random() * BOSSES.length)];
+          const orderedBossId = bossStoryOrder[state.bossDefeatCount % bossStoryOrder.length];
+          const bossDef =
+            BOSSES.find((boss) => boss.id === orderedBossId) ||
+            BOSSES[Math.floor(Math.random() * BOSSES.length)];
           const hp = calculateBossHP(playerLevel);
 
           const battle: BossBattle = {
@@ -243,6 +265,7 @@ export const useGameStore = create<GameState>()(
       applyBossAbility: (abilityId) => {
         const { bossBattle } = get();
         if (!bossBattle) return;
+        if (bossBattle.activeAbilities.some((ability) => ability.id === abilityId)) return;
 
         const bossDef = BOSSES.find((b) => b.id === bossBattle.bossId);
         if (!bossDef) return;
@@ -318,10 +341,11 @@ export const useGameStore = create<GameState>()(
         set({ combo: next, maxCombo: Math.max(maxCombo, next) });
         return next;
       },
+      decrementCombo: () => set({ combo: Math.max(0, get().combo - 1) }),
       resetCombo: () => set({ combo: 0 }),
 
-      tryDropGem: (difficulty) => {
-        const chance = DROP_CHANCE[difficulty] || 0;
+      tryDropGem: (difficulty, chanceMultiplier = 1) => {
+        const chance = Math.min((DROP_CHANCE[difficulty] || 0) * chanceMultiplier, 1);
         if (Math.random() > chance) return null;
         const pool = GEM_DROP_TABLE[difficulty] || [];
         if (pool.length === 0) return null;
@@ -337,7 +361,11 @@ export const useGameStore = create<GameState>()(
       },
 
       socketGem: (id) => {
-        set({ skillGems: get().skillGems.map((g) => g.id === id ? { ...g, socketed: true } : g) });
+        const gems = get().skillGems;
+        const socketedCount = gems.filter((g) => g.socketed).length;
+        const target = gems.find((g) => g.id === id);
+        if (!target || target.socketed || socketedCount >= 3) return;
+        set({ skillGems: gems.map((g) => g.id === id ? { ...g, socketed: true } : g) });
       },
       unsocketGem: (id) => {
         set({ skillGems: get().skillGems.map((g) => g.id === id ? { ...g, socketed: false } : g) });
@@ -356,10 +384,23 @@ export const useGameStore = create<GameState>()(
         return true;
       },
       isDoubleXPActive: () => get().doubleXpActive,
+      activateGoldBoost: () => set({ nextGoldBoostActive: true }),
+      consumeGoldBoost: () => {
+        if (!get().nextGoldBoostActive) return false;
+        set({ nextGoldBoostActive: false });
+        return true;
+      },
+      activateGemBoost: () => set({ nextGemBoostActive: true }),
+      consumeGemBoost: () => {
+        if (!get().nextGemBoostActive) return false;
+        set({ nextGemBoostActive: false });
+        return true;
+      },
       toggleFocusMode: () => set({ focusMode: !get().focusMode }),
+      unlockFocusBoost: () => set({ focusBoostUnlocked: true }),
 
       checkStoryChapter: (playerLevel, bossDefeatedId) => {
-        const { unlockedChapters, totalTasksCompleted, streaks, bossDefeatCount } = get();
+        const { unlockedChapters, totalTasksCompleted, streaks } = get();
         for (const chapter of STORY_CHAPTERS) {
           if (unlockedChapters.includes(chapter.id)) continue;
           let triggered = false;

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTaskStore } from '@/stores/taskStore';
+import { useGameStore } from '@/stores/gameStore';
 import { TaskDifficulty, TaskPriority } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -28,6 +29,7 @@ const difficultyColors: Record<TaskDifficulty, string> = {
 
 export function TaskForm({ isOpen, onClose }: TaskFormProps) {
   const addTask = useTaskStore((s) => s.addTask);
+  const smartBreakdownUnlocked = useGameStore((s) => s.unlockedChapters.includes('chapter2'));
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -53,6 +55,32 @@ export function TaskForm({ isOpen, onClose }: TaskFormProps) {
       setSubtasks([...subtasks, st]);
     }
     setSubtaskInput('');
+  };
+
+  const handleSmartBreakdown = () => {
+    const baseTitle = title.trim() || '这个委托';
+    const existing = new Set(subtasks.map((st) => st.toLowerCase()));
+    const ideas = [
+      `明确「${baseTitle}」的完成标准`,
+      `拆出「${baseTitle}」的第一步行动`,
+      `处理「${baseTitle}」里最容易卡住的部分`,
+      `完成并提交「${baseTitle}」的最小可用结果`,
+    ];
+    const next = [...subtasks];
+    for (const idea of ideas) {
+      if (!existing.has(idea.toLowerCase())) {
+        next.push(idea);
+        existing.add(idea.toLowerCase());
+      }
+      if (next.length >= 6) break;
+    }
+    setSubtasks(next);
+    if (!description.trim()) {
+      setDescription('由 C.L.A.W. 智能拆解生成，可按实际情况删改子任务。');
+    }
+    if (difficulty === 'easy') {
+      setDifficulty('medium');
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -212,6 +240,22 @@ export function TaskForm({ isOpen, onClose }: TaskFormProps) {
               <label className="text-xs text-[var(--color-text-secondary)] font-medium mb-1 block">
                 子任务
               </label>
+              {smartBreakdownUnlocked && (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 px-3 py-2">
+                  <span className="text-[10px] text-[var(--color-text-secondary)]">
+                    战术拆解协议已解锁
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!title.trim()}
+                    onClick={handleSmartBreakdown}
+                  >
+                    智能拆解
+                  </Button>
+                </div>
+              )}
               <div className="flex gap-1">
                 <Input
                   placeholder="添加子任务..."

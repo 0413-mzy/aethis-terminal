@@ -26,24 +26,36 @@ export function GameShell({ children }: { children: ReactNode }) {
   );
 
   const checkStoryChapter = useGameStore((s) => s.checkStoryChapter);
+  const activeModal = useUIStore((s) => s.activeModal);
 
-  // Check if character exists, show creation if not
+  // Sequence: character creation → story chapter → daily reward
   useEffect(() => {
     if (!character.name) {
       openModal('characterCreation');
-    } else {
-      // Trigger first_visit story chapter on first app load
-      const chapter = checkStoryChapter(character.level);
-      if (chapter) openModal('storyChapter', { chapter });
+      return;
     }
-  }, [character.name, openModal, checkStoryChapter, character.level]);
+  }, [character.name, openModal]);
 
-  // Daily check-in
+  // After character creation modal closes, show story chapter
   useEffect(() => {
-    if (character.name && checkDailyCheckin()) {
-      openModal('dailyReward');
+    if (!character.name || activeModal !== null) return;
+    const chapter = checkStoryChapter(character.level);
+    if (chapter) {
+      openModal('storyChapter', { chapter });
     }
-  }, [character.name, checkDailyCheckin, openModal]);
+  }, [character.name, activeModal, checkStoryChapter, character.level, openModal]);
+
+  // After story chapter closes, show daily reward
+  useEffect(() => {
+    if (!character.name || activeModal !== null) return;
+    // Small delay to let story chapter close animation finish
+    const timer = setTimeout(() => {
+      if (checkDailyCheckin()) {
+        openModal('dailyReward');
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [character.name, activeModal, checkDailyCheckin, openModal]);
 
   // Game loop (HP regen, deadline checks)
   useGameLoop();

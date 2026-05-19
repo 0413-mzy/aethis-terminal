@@ -7,6 +7,8 @@ export interface StoryChapter {
   trigger: ChapterTrigger;
   content: string[];
   reward?: string;
+  rewardAction?: 'setTitle' | 'unlockFocusBoost';
+  rewardValue?: string;
 }
 
 export type ChapterTrigger =
@@ -40,6 +42,8 @@ export const STORY_CHAPTERS: StoryChapter[] = [
       '不是宏大的完美计划，而是一颗能够打火的燧石。',
     ],
     reward: '获得称号：执行官 (The Executor)',
+    rewardAction: 'setTitle',
+    rewardValue: '执行官',
   },
   {
     id: 'chapter1',
@@ -113,6 +117,8 @@ export const STORY_CHAPTERS: StoryChapter[] = [
       '由纯粹专注凝聚而成的光刃，将延宕领主彻底净化。',
     ],
     reward: '专注模式升级：Boss战中使用番茄钟可造成3倍伤害',
+    rewardAction: 'unlockFocusBoost',
+    rewardValue: '3x',
   },
   {
     id: 'chapter4',
@@ -138,6 +144,8 @@ export const STORY_CHAPTERS: StoryChapter[] = [
       '那道粗糙而温暖的信号，告诉了你——完成，比完美更重要。',
     ],
     reward: '获得永久被动：提交按钮伤害 +50%（Done is better than perfect）',
+    rewardAction: 'unlockFocusBoost',
+    rewardValue: 'perm',
   },
 ];
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useUIStore } from '@/stores/uiStore';
 import { useGameStore } from '@/stores/gameStore';
+import { useCharacterStore } from '@/stores/characterStore';
 import { StoryChapter } from '@/data/story';
 import { Button } from '@/components/ui/Button';
 import { sound } from '@/lib/soundManager';
@@ -64,12 +65,21 @@ export function StoryChapterModal() {
       : []),
   ];
 
+  const setTitle = useCharacterStore((s) => s.setTitle);
+  const unlockFocusBoost = useGameStore((s) => s.unlockFocusBoost);
+
   const handleContinue = () => {
     if (!typingDone) {
       setTypedLines(lines);
       setCurrentLineChars(0);
       setTypingDone(true);
       return;
+    }
+    if (chapter?.rewardAction === 'setTitle' && chapter?.rewardValue) {
+      setTitle(chapter.rewardValue);
+    }
+    if (chapter?.rewardAction === 'unlockFocusBoost') {
+      unlockFocusBoost();
     }
     sound.complete();
     dismissStoryChapter();

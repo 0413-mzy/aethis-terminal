@@ -12,6 +12,7 @@ export function BossEncounterModal() {
   const bossBattle = useGameStore((s) => s.bossBattle);
   const closeModal = useUIStore((s) => s.closeModal);
   const setView = useUIStore((s) => s.setView);
+  const addToast = useUIStore((s) => s.addToast);
 
   const bossDef = bossBattle ? BOSSES.find((b) => b.id === bossBattle.bossId) : null;
 
@@ -27,9 +28,19 @@ export function BossEncounterModal() {
     });
   }, []);
 
+  const clearBoss = useGameStore((s) => s.clearBoss);
+  const resetStreak = useGameStore((s) => s.resetStreak);
+
   const handleFace = () => {
     closeModal();
     setView('boss');
+  };
+
+  const handleFlee = () => {
+    clearBoss();
+    resetStreak();
+    closeModal();
+    addToast({ type: 'damage', message: '你逃跑了！Boss已消失，连签已重置。' });
   };
 
   if (!bossDef) return null;
@@ -94,10 +105,10 @@ export function BossEncounterModal() {
         </Button>
 
         <button
-          onClick={closeModal}
+          onClick={handleFlee}
           className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer"
         >
-          逃跑（失去连签）
+          逃跑（失去连签 + Boss消失）
         </button>
       </motion.div>
     </div>

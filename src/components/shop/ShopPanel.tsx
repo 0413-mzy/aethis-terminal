@@ -39,8 +39,13 @@ export function ShopPanel() {
   const character = useCharacterStore((s) => s.character);
   const spendGold = useCharacterStore((s) => s.spendGold);
   const shieldActive = useGameStore((s) => s.shieldActive);
+  const doubleXpActive = useGameStore((s) => s.doubleXpActive);
+  const nextGoldBoostActive = useGameStore((s) => s.nextGoldBoostActive);
+  const nextGemBoostActive = useGameStore((s) => s.nextGemBoostActive);
   const activateShield = useGameStore((s) => s.activateShield);
   const activateDoubleXP = useGameStore((s) => s.activateDoubleXP);
+  const activateGoldBoost = useGameStore((s) => s.activateGoldBoost);
+  const activateGemBoost = useGameStore((s) => s.activateGemBoost);
   const addToast = useUIStore((s) => s.addToast);
 
   const handlePurchase = (item: ShopItem) => {
@@ -60,6 +65,8 @@ export function ShopPanel() {
     sound.purchase();
     if (id === 'func-shield') { activateShield(); addToast({ type: 'info', message: '🛡️ 护盾已激活！' }); }
     if (id === 'func-doublexp') { activateDoubleXP(); addToast({ type: 'info', message: '⚡ 双倍经验已激活！' }); }
+    if (id === 'func-goldboost') { activateGoldBoost(); addToast({ type: 'info', message: '🪙 贡献点增幅已激活！' }); }
+    if (id === 'func-gemboost') { activateGemBoost(); addToast({ type: 'info', message: '💎 宝石探针已激活！' }); }
   };
 
   return (
@@ -78,8 +85,10 @@ export function ShopPanel() {
         <h5 className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
           🧪 消耗品
         </h5>
+        <ConsumableItem id="func-goldboost" name="🪙 贡献点增幅" desc="下次完成任务贡献点 +20%" cost={80} active={nextGoldBoostActive} onBuy={() => handleFunctionalBuy('func-goldboost', 80)} />
+        <ConsumableItem id="func-gemboost" name="💎 宝石探针" desc="下次完成任务宝石掉率翻倍" cost={120} active={nextGemBoostActive} onBuy={() => handleFunctionalBuy('func-gemboost', 120)} />
         <ConsumableItem id="func-shield" name="🛡️ 护盾" desc="当天逾期任务不扣血（一次性）" cost={150} active={shieldActive} onBuy={() => handleFunctionalBuy('func-shield', 150)} />
-        <ConsumableItem id="func-doublexp" name="⚡ 双倍经验" desc="下次完成任务经验翻倍" cost={200} active={false} onBuy={() => handleFunctionalBuy('func-doublexp', 200)} />
+        <ConsumableItem id="func-doublexp" name="⚡ 双倍经验" desc="下次完成任务经验翻倍" cost={200} active={doubleXpActive} onBuy={() => handleFunctionalBuy('func-doublexp', 200)} />
       </div>
 
       {/* 装饰品 */}

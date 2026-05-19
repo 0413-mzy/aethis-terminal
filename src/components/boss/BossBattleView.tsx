@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useGameStore } from '@/stores/gameStore';
 import { useCharacterStore } from '@/stores/characterStore';
+import { useInventoryStore } from '@/stores/inventoryStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { useUIStore } from '@/stores/uiStore';
 import { BOSSES } from '@/data/bosses';
 import { calculateSubtaskDamage, calculateBossXP, calculateBossGold } from '@/lib/constants';
@@ -31,12 +33,20 @@ export function BossBattleView() {
   const damageBoss = useGameStore((s) => s.damageBoss);
   const defeatBoss = useGameStore((s) => s.defeatBoss);
   const clearBoss = useGameStore((s) => s.clearBoss);
+  const getActiveGemEffects = useGameStore((s) => s.getActiveGemEffects);
+  const recordGoldEarned = useGameStore((s) => s.recordGoldEarned);
+  const checkStoryChapter = useGameStore((s) => s.checkStoryChapter);
+  const checkAchievements = useGameStore((s) => s.checkAchievements);
   const character = useCharacterStore((s) => s.character);
   const gainXP = useCharacterStore((s) => s.gainXP);
   const gainGold = useCharacterStore((s) => s.gainGold);
   const loseGold = useCharacterStore((s) => s.loseGold);
   const addToast = useUIStore((s) => s.addToast);
+  const openModal = useUIStore((s) => s.openModal);
   const setView = useUIStore((s) => s.setView);
+  const focusMode = useGameStore((s) => s.focusMode);
+  const focusBoostUnlocked = useGameStore((s) => s.focusBoostUnlocked);
+  const openTaskCount = useTaskStore((s) => s.tasks.filter((task) => task.status !== 'done').length);
 
   const [playerCooldown, setPlayerCooldown] = useState(0);
   const [bossTimer, setBossTimer] = useState(BOSS_ATTACK_INTERVAL);
@@ -44,6 +54,10 @@ export function BossBattleView() {
   const [combatLog, setCombatLog] = useState<string[]>([]);
   const [isDefending, setIsDefending] = useState(false);
   const [defendCooldown, setDefendCooldown] = useState(0);
+  const [phantomBarrier, setPhantomBarrier] = useState(0);
+  const [fatigueStacks, setFatigueStacks] = useState(0);
+  const [distracted, setDistracted] = useState(false);
+  const [deadlineRush, setDeadlineRush] = useState(false);
   const totalDamageRef = useRef(0);
   const attackLockedRef = useRef(false);
   const bossTimerRef = useRef(BOSS_ATTACK_INTERVAL);
@@ -51,12 +65,24 @@ export function BossBattleView() {
   const isDefendingRef = useRef(false);
 
   const bossDef = bossBattle ? BOSSES.find((b) => b.id === bossBattle.bossId) : null;
+  const gemEffects = getActiveGemEffects();
+  const bossId = bossDef?.id;
 
   const intel = character.stats.intelligence;
   const agi = character.stats.agility;
-  const effectiveCooldown = Math.max(3, BASE_COOLDOWN - intel * 0.5);
+  const burnoutPenalty = bossId === 'burnout-behemoth' ? fatigueStacks * 0.8 : 0;
+  const dragonTempoBonus = bossId === 'procrastination-dragon' && deadlineRush ? 1 : 0;
+  const effectiveCooldown = Math.max(2.5, BASE_COOLDOWN - intel * 0.5 - gemEffects.cooldownReduction + burnoutPenalty - dragonTempoBonus);
   const dodgeChance = Math.min(0.4, agi * 0.05);
-  const critChance = Math.min(0.3, intel * 0.04);
+  const critChance = Math.min(0.6, intel * 0.04 + gemEffects.bossCrit / 100);
+
+  useEffect(() => {
+    setPhantomBarrier(bossId === 'perfectionist-phantom' ? 2 : 0);
+    setFatigueStacks(0);
+    setDistracted(false);
+    setDeadlineRush(bossId === 'procrastination-dragon');
+    totalDamageRef.current = 0;
+  }, [bossId, bossBattle?.id]);
 
   useEffect(() => {
     isDefendingRef.current = isDefending;
@@ -105,6 +131,14 @@ export function BossBattleView() {
       const char = useCharacterStore.getState().character;
       const currentDodgeChance = Math.min(0.4, char.stats.agility * 0.05);
       let rawDamage = calculateBossDamage(char.level, hpPct, bossDef2?.theme || 'fire');
+      const currentGemEffects = useGameStore.getState().getActiveGemEffects();
+      if (currentGemEffects.damageReduce > 0) {
+        rawDamage = Math.round(rawDamage * (1 - Math.min(currentGemEffects.damageReduce, 75) / 100));
+      }
+      if (bossDef2?.id === 'overwhelm-ogre') {
+        const openTasks = useTaskStore.getState().tasks.filter((task) => task.status !== 'done').length;
+        rawDamage += Math.min(openTasks * 4, 40);
+      }
       const nextLogEntries: string[] = [];
 
       if (isDefendingRef.current) {
@@ -140,6 +174,19 @@ export function BossBattleView() {
       });
 
       useUIStore.getState().addToast({ type: 'damage', message: `${bossDef2?.name} 攻击造成 ${rawDamage} 伤害！` });
+
+      if (bossDef2?.id === 'burnout-behemoth') {
+        setFatigueStacks((prev) => Math.min(prev + 1, 4));
+        nextLogEntries.unshift('❄️ 倦怠加深：攻击冷却变慢，可用深呼吸清除');
+      }
+      if (bossDef2?.id === 'distraction-demon') {
+        setDistracted(true);
+        nextLogEntries.unshift('👁️ 分心侵扰：需要先重整专注才能攻击');
+      }
+      if (bossDef2?.id === 'procrastination-dragon') {
+        setDeadlineRush(true);
+        nextLogEntries.unshift('🔥 截止日烈焰逼近：抢先启动可获得节奏优势');
+      }
 
       const updatedChar = useCharacterStore.getState().character;
       if (updatedChar.currentHP <= 0) {
@@ -205,22 +252,31 @@ export function BossBattleView() {
 
   const bossPct = (bossBattle.currentHP / bossBattle.maxHP) * 100;
   const isEnraged = bossPct < 30;
-  const canAttack = playerCooldown <= 0;
+  const canAttack = playerCooldown <= 0 && !distracted;
   const canDefend = defendCooldown <= 0 && !isDefending;
-  const baseDmg = calculateSubtaskDamage(character.stats.strength);
+  const baseDmg = Math.round(
+    Math.max(15, calculateSubtaskDamage(character.stats.strength) -
+      (bossId === 'burnout-behemoth' ? fatigueStacks * 5 : 0)) *
+    (focusMode && focusBoostUnlocked ? 3 : 1)
+  );
 
   const handleAttack = () => {
     if (!canAttack) return;
 
     const isCrit = Math.random() < critChance;
-    const damage = isCrit ? baseDmg * 2 : baseDmg;
+    let damage = isCrit ? baseDmg * 2 : baseDmg;
+    let extraLog = '';
+    if (bossId === 'perfectionist-phantom' && phantomBarrier > 0) {
+      damage = Math.max(10, Math.round(damage * 0.35));
+      extraLog = ' 完美主义护盾吸收了大部分伤害。';
+    }
     totalDamageRef.current += damage;
     damageBoss(damage);
     setPlayerCooldown(effectiveCooldown);
     if (isCrit) sound.crit(); else sound.complete();
 
     const critText = isCrit ? ' 💥暴击！' : '';
-    setCombatLog((prev) => [`⚔️ 你对 ${bossDef.name} 造成 ${damage} 点伤害！${critText}`, ...prev.slice(0, 4)]);
+    setCombatLog((prev) => [`⚔️ 你对 ${bossDef.name} 造成 ${damage} 点伤害！${critText}${extraLog}`, ...prev.slice(0, 4)]);
 
     particleEmitters.emit(window.innerWidth / 2, window.innerHeight * 0.7, {
       count: isCrit ? 40 : 20, spread: 60, speed: isCrit ? 7 : 5,
@@ -236,18 +292,36 @@ export function BossBattleView() {
     );
 
     // Boss defeated
-    const updated = useGameStore.getState().bossBattle;
-    if (updated && updated.status === 'defeated') {
-      sound.bossDefeat();
-      petMood('excited');
-      const xp = calculateBossXP(character.level, character.stats.intelligence);
-      const gold = calculateBossGold(character.level, character.stats.strength);
-      gainXP(xp);
-      gainGold(gold);
-      defeatBoss({ playerLevel: character.level, xpEarned: xp, goldEarned: gold, damageDealt: totalDamageRef.current });
-      addToast({ type: 'xp', message: `+${xp} 经验（Boss击败！）` });
-      addToast({ type: 'gold', message: `+${gold} 金币（Boss战利品！）` });
-      particleEmitters.emit(window.innerWidth / 2, window.innerHeight / 2, {
+      const updated = useGameStore.getState().bossBattle;
+      if (updated && updated.status === 'defeated') {
+        sound.bossDefeat();
+        petMood('excited');
+        const latestGemEffects = useGameStore.getState().getActiveGemEffects();
+        const xp = Math.round(calculateBossXP(character.level, character.stats.intelligence) * (1 + latestGemEffects.xpBoost / 100));
+        const gold = Math.round(calculateBossGold(character.level, character.stats.strength) * (1 + latestGemEffects.goldBoost / 100));
+        gainXP(xp);
+        gainGold(gold);
+        recordGoldEarned(gold);
+        defeatBoss({ playerLevel: character.level, xpEarned: xp, goldEarned: gold, damageDealt: totalDamageRef.current });
+        addToast({ type: 'xp', message: `+${xp} 经验（Boss击败！）` });
+        addToast({ type: 'gold', message: `+${gold} 金币（Boss战利品！）` });
+        const chapter = checkStoryChapter(character.level, bossDef.id);
+        if (chapter) openModal('storyChapter', { chapter });
+        const updatedChar = useCharacterStore.getState().character;
+        const totalEarned = useGameStore.getState().totalGoldEarned;
+        const newAchievements = checkAchievements(updatedChar.level, totalEarned);
+        for (const achievement of newAchievements) {
+          addToast({ type: 'achievement', message: `🏆 ${achievement.name}` });
+          if (achievement.rewardGold > 0) {
+            gainGold(achievement.rewardGold);
+            addToast({ type: 'gold', message: `成就奖励 +${achievement.rewardGold} 金币`, amount: achievement.rewardGold });
+          }
+          if (achievement.rewardItemId) {
+            const itemAdded = useInventoryStore.getState().purchaseItem(achievement.rewardItemId);
+            if (itemAdded) addToast({ type: 'achievement', message: `🎁 获得奖励物品：${achievement.rewardItemId}` });
+          }
+        }
+        particleEmitters.emit(window.innerWidth / 2, window.innerHeight / 2, {
         count: 150, spread: 360, speed: 8,
         colors: ['#c9a44b', '#f0c860', '#ffd700', '#fff', '#ff6600'],
         size: 6, life: 4, gravity: 20,
@@ -262,6 +336,47 @@ export function BossBattleView() {
     setDefendCooldown(12);
     setCombatLog((prev) => ['🛡️ 进入防御姿态，下次Boss攻击伤害减半', ...prev.slice(0, 4)]);
     addToast({ type: 'info', message: '🛡️ 防御姿态已激活' });
+  };
+
+  const handleSpecialAction = () => {
+    if (bossId === 'perfectionist-phantom' && phantomBarrier > 0) {
+      setPhantomBarrier((prev) => Math.max(0, prev - 1));
+      setPlayerCooldown(1.5);
+      sound.complete();
+      setCombatLog((prev) => ['📝 提交了不完美草稿，完美主义护盾削弱一层', ...prev.slice(0, 4)]);
+      addToast({ type: 'info', message: '📝 完成比完美更重要。' });
+      return;
+    }
+
+    if (bossId === 'burnout-behemoth' && fatigueStacks > 0) {
+      setFatigueStacks(0);
+      setPlayerCooldown(2);
+      sound.defend();
+      setCombatLog((prev) => ['🌿 深呼吸完成，倦怠层数清空', ...prev.slice(0, 4)]);
+      addToast({ type: 'info', message: '🌿 节奏恢复了。' });
+      return;
+    }
+
+    if (bossId === 'distraction-demon' && distracted) {
+      setDistracted(false);
+      setPlayerCooldown(1);
+      sound.defend();
+      setCombatLog((prev) => ['🎯 重整专注，下一次攻击已准备就绪', ...prev.slice(0, 4)]);
+      addToast({ type: 'info', message: '🎯 专注已恢复。' });
+      return;
+    }
+
+    if (bossId === 'procrastination-dragon' && deadlineRush) {
+      setDeadlineRush(false);
+      bossTimerRef.current = Math.min(bossTimerRef.current + 2, BOSS_ATTACK_INTERVAL);
+      setBossTimer(bossTimerRef.current);
+      const interruptDamage = Math.min(35, Math.max(0, bossBattle.currentHP - 1));
+      damageBoss(interruptDamage);
+      totalDamageRef.current += interruptDamage;
+      sound.complete();
+      setCombatLog((prev) => [`⏱️ 抢先启动，拖延魔龙被打断并受到 ${interruptDamage} 点伤害`, ...prev.slice(0, 4)]);
+      addToast({ type: 'info', message: '⏱️ 抢回了行动节奏。' });
+    }
   };
 
   const handleFlee = () => {
@@ -352,8 +467,28 @@ export function BossBattleView() {
       <div className="space-y-3">
         <div className="flex gap-2 justify-center flex-wrap">
           <Button variant="danger" size="lg" onClick={handleAttack} disabled={!canAttack}>
-            {canAttack ? `⚔️ 攻击（${baseDmg} 伤害）` : `⏳ ${playerCooldown.toFixed(1)}s`}
+            {distracted ? '👁️ 分心中' : canAttack ? `⚔️ 攻击（${baseDmg} 伤害）` : `⏳ ${playerCooldown.toFixed(1)}s`}
           </Button>
+          {bossId === 'perfectionist-phantom' && phantomBarrier > 0 && (
+            <Button variant="secondary" size="md" onClick={handleSpecialAction}>
+              📝 提交草稿（{phantomBarrier}）
+            </Button>
+          )}
+          {bossId === 'burnout-behemoth' && fatigueStacks > 0 && (
+            <Button variant="secondary" size="md" onClick={handleSpecialAction}>
+              🌿 深呼吸（{fatigueStacks}）
+            </Button>
+          )}
+          {bossId === 'distraction-demon' && distracted && (
+            <Button variant="secondary" size="md" onClick={handleSpecialAction}>
+              🎯 重整专注
+            </Button>
+          )}
+          {bossId === 'procrastination-dragon' && deadlineRush && (
+            <Button variant="secondary" size="md" onClick={handleSpecialAction}>
+              ⏱️ 抢先启动
+            </Button>
+          )}
           <Button variant="secondary" size="md" onClick={handleDefend} disabled={!canDefend}>
             {canDefend ? '🛡️ 防御' : `🛡️ ${defendCooldown.toFixed(0)}s`}
           </Button>
@@ -386,6 +521,24 @@ export function BossBattleView() {
           <span>🧠 智力: {intel}（冷却-{(intel * 0.5).toFixed(1)}s | 暴击+{(critChance * 100).toFixed(0)}%）</span>
           <span>💨 敏捷: {agi}（闪避+{(dodgeChance * 100).toFixed(0)}%）</span>
           <span>❤️ 体力: {character.stats.vitality}（生命+{character.stats.vitality * 20}）</span>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {bossId === 'perfectionist-phantom' && phantomBarrier > 0 && (
+            <Badge variant="danger" size="sm">无瑕护盾 {phantomBarrier}</Badge>
+          )}
+          {bossId === 'burnout-behemoth' && fatigueStacks > 0 && (
+            <Badge variant="danger" size="sm">倦怠 {fatigueStacks}</Badge>
+          )}
+          {bossId === 'distraction-demon' && distracted && (
+            <Badge variant="danger" size="sm">分心侵扰</Badge>
+          )}
+          {bossId === 'procrastination-dragon' && deadlineRush && (
+            <Badge variant="danger" size="sm">截止日烈焰</Badge>
+          )}
+          {bossId === 'overwhelm-ogre' && openTaskCount > 0 && (
+            <Badge variant="danger" size="sm">积压压力 +{Math.min(openTaskCount * 4, 40)}伤害</Badge>
+          )}
         </div>
 
         {/* Defend indicator */}
