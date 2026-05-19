@@ -38,6 +38,7 @@ export function useTaskCompletion() {
   const consumeShield = useGameStore((s) => s.consumeShield);
   const isDoubleXPActive = useGameStore((s) => s.isDoubleXPActive);
   const checkAndSpawnBoss = useGameStore((s) => s.checkAndSpawnBoss);
+  const checkStoryChapter = useGameStore((s) => s.checkStoryChapter);
   const checkAchievements = useGameStore((s) => s.checkAchievements);
   const addToast = useUIStore((s) => s.addToast);
   const openModal = useUIStore((s) => s.openModal);
@@ -147,6 +148,8 @@ export function useTaskCompletion() {
       }
 
       const updatedChar = useCharacterStore.getState().character;
+      const chapter = checkStoryChapter(updatedChar.level);
+      if (chapter) openModal('storyChapter', { chapter });
       const newAchievements = checkAchievements(updatedChar.level, updatedChar.gold);
       if (newAchievements.length > 0) {
         for (const achievement of newAchievements) {
@@ -194,6 +197,7 @@ export function useTaskCompletion() {
       incrementTotalCompleted,
       recordGoldEarned,
       checkAndSpawnBoss,
+      checkStoryChapter,
       checkAchievements,
       addToast,
       openModal,

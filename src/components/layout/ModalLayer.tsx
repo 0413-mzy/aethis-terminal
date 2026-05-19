@@ -2,7 +2,8 @@
 
 import { useUIStore } from '@/stores/uiStore';
 import { Modal } from '@/components/ui/Modal';
-import { CharacterCreationModal } from '@/components/character/CharacterCreationModal';
+import { PrologueModal } from '@/components/story/PrologueModal';
+import { StoryChapterModal } from '@/components/story/StoryChapterModal';
 import { LevelUpModal } from '@/components/character/LevelUpModal';
 import { DeathModal } from '@/components/character/DeathModal';
 import { DailyRewardModal } from '@/components/notifications/DailyRewardModal';
@@ -15,8 +16,8 @@ export function ModalLayer() {
 
   return (
     <>
-      <Modal isOpen={activeModal === 'characterCreation'} onClose={() => {}} size="md" closeOnBackdrop={false}>
-        <CharacterCreationModal />
+      <Modal isOpen={activeModal === 'characterCreation'} onClose={() => {}} size="lg" closeOnBackdrop={false}>
+        <PrologueModal />
       </Modal>
 
       <Modal isOpen={activeModal === 'levelUp'} onClose={closeModal} size="md">
@@ -33,6 +34,10 @@ export function ModalLayer() {
 
       <Modal isOpen={activeModal === 'death'} onClose={closeModal} size="sm">
         <DeathModal />
+      </Modal>
+
+      <Modal isOpen={activeModal === 'storyChapter'} onClose={closeModal} size="lg">
+        <StoryChapterModal />
       </Modal>
 
       <AchievementToast />

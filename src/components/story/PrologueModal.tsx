@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useCharacterStore } from '@/stores/characterStore';
 import { useUIStore } from '@/stores/uiStore';
 import { CLASS_STATS } from '@/lib/constants';
@@ -9,18 +9,18 @@ import { Button } from '@/components/ui/Button';
 import { sound } from '@/lib/soundManager';
 
 const TERMINAL_LINES = [
-  { text: '> 系统自检中...', delay: 600 },
-  { text: '> 认知网络状态：离线', delay: 800 },
-  { text: '> 动力源：枯竭', delay: 600 },
-  { text: '> 熵化程度：97.3%', delay: 700 },
-  { text: '> 公会大厅连接：已断开', delay: 1000 },
-  { text: '', delay: 400 },
-  { text: '> 正在搜索可用模块...', delay: 800 },
-  { text: '> 找到：Project OpenClaw（休眠）', delay: 900 },
-  { text: '> 等待最小可行性指令 (MVP)...', delay: 1200 },
-  { text: '', delay: 600 },
-  { text: '> 检测到微弱生物信号。', delay: 1000 },
-  { text: '> 身份未知。请确认您的代号。', delay: 1000 },
+  '> 系统自检中...',
+  '> 认知网络状态：离线',
+  '> 动力源：枯竭',
+  '> 熵化程度：97.3%',
+  '> 公会大厅连接：已断开',
+  '',
+  '> 正在搜索可用模块...',
+  '> 找到：Project OpenClaw（休眠）',
+  '> 等待最小可行性指令 (MVP)...',
+  '',
+  '> 检测到微弱生物信号。',
+  '> 身份未知。请确认您的代号。',
 ];
 
 const classes = [
@@ -30,56 +30,50 @@ const classes = [
   { id: 'guardian', name: '守护型执行官', icon: '🛡️', desc: '体力专精。构筑坚不可摧的意志力护盾。', stats: CLASS_STATS.guardian },
 ];
 
+const STEPS = ['terminal', 'name', 'class', 'done'] as const;
+type Step = typeof STEPS[number];
+
 export function PrologueModal() {
-  const [stage, setStage] = useState<'terminal' | 'name' | 'class' | 'done'>('terminal');
-  const [visibleLines, setVisibleLines] = useState(0);
+  const [step, setStep] = useState<Step>('terminal');
+  const [showAll, setShowAll] = useState(false);
   const [name, setName] = useState('');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const initCharacter = useCharacterStore((s) => s.initCharacter);
   const closeModal = useUIStore((s) => s.closeModal);
-  const terminalRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  useEffect(() => {
-    if (stage !== 'terminal') return;
-    if (visibleLines < TERMINAL_LINES.length) {
-      const timer = setTimeout(() => {
-        setVisibleLines((v) => v + 1);
-        sound.complete();
-      }, TERMINAL_LINES[visibleLines]?.delay || 500);
-      return () => clearTimeout(timer);
-    } else {
-      const timer = setTimeout(() => setStage('name'), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [stage, visibleLines]);
+  const displayedLines = showAll ? TERMINAL_LINES : TERMINAL_LINES.slice(0, 8);
 
-  useEffect(() => {
-    if (terminalRef.current) {
-      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+  const handleTerminalNext = () => {
+    if (!showAll) {
+      setShowAll(true);
+      sound.complete();
+      return;
     }
-  }, [visibleLines]);
+    sound.complete();
+    setStep('name');
+  };
 
-  const handleCreate = () => {
+  const handleClassNext = () => {
     if (!name.trim() || !selectedClass) return;
     const cls = classes.find((c) => c.id === selectedClass);
     if (!cls) return;
     initCharacter(name.trim(), cls.stats);
-    setStage('done');
-    setTimeout(() => {
-      if (mountedRef.current) {
-        closeModal();
-      }
-    }, 2500);
+    sound.complete();
+    setStep('done');
+  };
+
+  const handleDone = () => {
+    if (mountedRef.current) closeModal();
   };
 
   return (
     <div className="bg-[#0a0c0f] border border-[#1a3a2a] rounded-xl overflow-hidden">
-      {/* Terminal header */}
       <div className="bg-[#0d1110] border-b border-[#1a3a2a] px-4 py-2 flex items-center gap-2">
         <span className="w-3 h-3 rounded-full bg-red-500" />
         <span className="w-3 h-3 rounded-full bg-yellow-500" />
@@ -87,30 +81,25 @@ export function PrologueModal() {
         <span className="text-[10px] text-green-500/60 ml-2 font-mono">aethis-terminal — 执行官接入点</span>
       </div>
 
-      <div className="p-6 font-mono min-h-[350px]">
-        {stage === 'terminal' && (
-          <div ref={terminalRef} className="space-y-0.5 max-h-[300px] overflow-y-auto">
-            {TERMINAL_LINES.slice(0, visibleLines).map((line, i) => (
-              <motion.p
-                key={i}
-                initial={{ opacity: 0, x: -5 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="text-sm text-green-400/80"
-              >
-                {line.text || ' '}
-              </motion.p>
+      <div className="p-6 font-mono min-h-[300px]">
+        {step === 'terminal' && (
+          <div className="space-y-1">
+            {displayedLines.map((line, i) => (
+              <p key={i} className="text-sm text-green-400/80">
+                {line || ' '}
+              </p>
             ))}
-            {visibleLines < TERMINAL_LINES.length && (
-              <span className="inline-block w-2 h-4 bg-green-400 animate-pulse" />
-            )}
+            <div className="pt-4 flex justify-end">
+              <Button variant="ghost" size="sm" onClick={handleTerminalNext}>
+                {showAll ? '> 输入代号' : '> 继续'}
+              </Button>
+            </div>
           </div>
         )}
 
-        {stage === 'name' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-            <p className="text-green-400 text-sm">
-              &gt; 身份未确认。请输入您的执行官代号：
-            </p>
+        {step === 'name' && (
+          <div className="space-y-4">
+            <p className="text-green-400 text-sm">&gt; 身份未确认。请输入您的执行官代号：</p>
             <div className="flex items-center gap-2">
               <span className="text-green-400">{'>'}</span>
               <input
@@ -120,44 +109,28 @@ export function PrologueModal() {
                 maxLength={16}
                 className="flex-1 bg-transparent border-none outline-none text-green-400 text-lg font-mono placeholder:text-green-400/30"
                 autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && name.trim()) {
-                    sound.complete();
-                    setStage('class');
-                  }
-                }}
+                onKeyDown={(e) => e.key === 'Enter' && name.trim() && setStep('class')}
               />
               <span className="inline-block w-2 h-5 bg-green-400 animate-pulse" />
             </div>
-            {name.trim() && (
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                onClick={() => { sound.complete(); setStage('class'); }}
-                className="text-xs text-green-400/60 hover:text-green-400 cursor-pointer"
-              >
-                &gt; 按 Enter 确认代号
-              </motion.button>
-            )}
-          </motion.div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setStep('terminal')}>&gt; 返回</Button>
+              <Button variant="ghost" size="sm" disabled={!name.trim()} onClick={() => { sound.complete(); setStep('class'); }}>
+                &gt; 确认代号
+              </Button>
+            </div>
+          </div>
         )}
 
-        {stage === 'class' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
-            <div>
-              <p className="text-green-400 text-sm mb-1">
-                &gt; 代号已确认：{name}
-              </p>
-              <p className="text-green-400/60 text-xs mb-3">
-                &gt; 请选择您的执行专精方向：
-              </p>
-            </div>
+        {step === 'class' && (
+          <div className="space-y-4">
+            <p className="text-green-400/60 text-xs">&gt; 代号已确认：{name}</p>
+            <p className="text-green-400 text-sm">&gt; 请选择您的执行专精方向：</p>
             <div className="grid grid-cols-2 gap-2">
               {classes.map((cls) => (
-                <motion.button
+                <button
                   key={cls.id}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setSelectedClass(cls.id)}
+                  onClick={() => { sound.complete(); setSelectedClass(cls.id); }}
                   className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
                     selectedClass === cls.id
                       ? 'border-green-400 bg-green-400/10'
@@ -169,46 +142,26 @@ export function PrologueModal() {
                     <span className="font-bold text-xs text-green-400">{cls.name}</span>
                   </div>
                   <p className="text-[10px] text-green-400/50">{cls.desc}</p>
-                </motion.button>
+                </button>
               ))}
             </div>
-            <Button
-              variant="gold"
-              size="lg"
-              className="w-full"
-              disabled={!selectedClass}
-              onClick={handleCreate}
-            >
-              &gt; 初始化 OpenClaw 协议
-            </Button>
-          </motion.div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setStep('name')}>&gt; 返回</Button>
+              <Button variant="ghost" size="sm" disabled={!selectedClass} onClick={handleClassNext}>
+                &gt; 初始化 OpenClaw 协议
+              </Button>
+            </div>
+          </div>
         )}
 
-        {stage === 'done' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-10 space-y-3"
-          >
-            <motion.div
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="text-5xl"
-            >
-              ⚡
-            </motion.div>
-            <p className="text-green-400 text-lg font-mono">
-              &gt; OpenClaw 协议已激活
-            </p>
-            <p className="text-green-400/60 text-sm font-mono">
-              &gt; 伴灵 C.L.A.W. 正在初始化...
-            </p>
-            <p className="text-green-400/40 text-xs font-mono">
-              &gt; 欢迎回来，执行官 {name}。
-            </p>
-            <p className="text-green-400/30 text-[10px] font-mono mt-4">
-              火种已经点燃。公会大厅等待您的指令。
-            </p>
+        {step === 'done' && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-10 space-y-3">
+            <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1.5, repeat: Infinity }} className="text-5xl">⚡</motion.div>
+            <p className="text-green-400 text-lg font-mono">&gt; OpenClaw 协议已激活</p>
+            <p className="text-green-400/60 text-sm font-mono">&gt; 伴灵 C.L.A.W. 正在初始化...</p>
+            <p className="text-green-400/40 text-xs font-mono">&gt; 欢迎回来，执行官 {name}。</p>
+            <p className="text-green-400/30 text-[10px] font-mono mt-4">火种已经点燃。公会大厅等待您的指令。</p>
+            <Button variant="ghost" size="sm" onClick={handleDone} className="mt-4">&gt; 进入公会大厅</Button>
           </motion.div>
         )}
       </div>
