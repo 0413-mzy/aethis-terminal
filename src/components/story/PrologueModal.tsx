@@ -125,7 +125,10 @@ export function PrologueModal() {
         <span className="text-[10px] text-green-500/60 ml-2 font-mono">aethis-terminal — 执行官接入点</span>
       </div>
 
-      <div className="p-6 font-mono min-h-[320px]">
+      <div
+        className="p-6 font-mono min-h-[320px] cursor-pointer"
+        onClick={() => { if (!typingDone && step === 'terminal') { setTypedLines(TERMINAL_LINES); setCurrentLineChars(0); setTypingDone(true); } }}
+      >
         {step === 'terminal' && (
           <div className="space-y-1">
             {displayLines.map((line, i) => (
@@ -136,11 +139,13 @@ export function PrologueModal() {
                 )}
               </p>
             ))}
-            <div className="pt-4 flex justify-end">
-              <Button variant="ghost" size="sm" onClick={handleTerminalNext}>
-                {typingDone ? '> 输入代号' : '> 跳过动画'}
-              </Button>
-            </div>
+            {typingDone && (
+              <div className="pt-4 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={handleTerminalNext}>
+                  &gt; 输入代号
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

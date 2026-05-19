@@ -87,7 +87,10 @@ export function StoryChapterModal() {
         <span className="text-[10px] text-green-500/60 ml-2 font-mono">aethis-terminal — {chapter.subtitle}</span>
       </div>
 
-      <div className="p-6 font-mono min-h-[280px] max-h-[460px] overflow-y-auto">
+      <div
+        className="p-6 font-mono min-h-[280px] max-h-[460px] overflow-y-auto cursor-pointer"
+        onClick={() => { if (!typingDone) { setTypedLines(lines); setCurrentLineChars(0); setTypingDone(true); } }}
+      >
         <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-green-400 text-lg mb-4 font-bold">
           {chapter.title}
         </motion.h2>
@@ -120,7 +123,7 @@ export function StoryChapterModal() {
 
       <div className="bg-[#0d1110] border-t border-[#1a3a2a] px-4 py-3 flex justify-end">
         <Button variant="ghost" size="sm" onClick={handleContinue}>
-          {typingDone ? '> 关闭终端' : '> 跳过'}
+          {typingDone ? '> 关闭终端' : '点击任意位置跳过动画'}
         </Button>
       </div>
     </div>
