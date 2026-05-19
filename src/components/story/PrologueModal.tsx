@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useCharacterStore } from '@/stores/characterStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -23,6 +23,9 @@ const TERMINAL_LINES = [
   '> 身份未知。请确认您的代号。',
 ];
 
+const CHAR_SPEED = 40; // ms per character
+const PUNCTUATION_PAUSE = 200; // extra pause after punctuation
+
 const classes = [
   { id: 'warrior', name: '突击型执行官', icon: '⚔️', desc: '力量专精。擅长正面击破高优先级委托。', stats: CLASS_STATS.warrior },
   { id: 'mage', name: '解析型执行官', icon: '🧙', desc: '智力专精。快速从委托中提取经验值。', stats: CLASS_STATS.mage },
@@ -35,7 +38,9 @@ type Step = typeof STEPS[number];
 
 export function PrologueModal() {
   const [step, setStep] = useState<Step>('terminal');
-  const [showAll, setShowAll] = useState(false);
+  const [typedLines, setTypedLines] = useState<string[]>([]);
+  const [currentLineChars, setCurrentLineChars] = useState(0);
+  const [typingDone, setTypingDone] = useState(false);
   const [name, setName] = useState('');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const initCharacter = useCharacterStore((s) => s.initCharacter);
@@ -47,12 +52,51 @@ export function PrologueModal() {
     return () => { mountedRef.current = false; };
   }, []);
 
-  const displayedLines = showAll ? TERMINAL_LINES : TERMINAL_LINES.slice(0, 8);
+  // Typewriter effect
+  useEffect(() => {
+    if (step !== 'terminal' || typingDone) return;
+
+    const totalLines = TERMINAL_LINES.length;
+    const currentLineIdx = typedLines.length;
+
+    if (currentLineIdx >= totalLines) {
+      setTypingDone(true);
+      return;
+    }
+
+    const targetLine = TERMINAL_LINES[currentLineIdx];
+    if (currentLineChars >= targetLine.length) {
+      // Line complete, move to next
+      const timer = setTimeout(() => {
+        setTypedLines((prev) => [...prev, targetLine]);
+        setCurrentLineChars(0);
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+
+    // Type next character
+    const isPunctuation = ',.，。！？…'.includes(targetLine[currentLineChars]);
+    const delay = isPunctuation ? CHAR_SPEED + PUNCTUATION_PAUSE : CHAR_SPEED;
+
+    const timer = setTimeout(() => {
+      setCurrentLineChars((prev) => prev + 1);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [step, typedLines, currentLineChars, typingDone]);
+
+  const displayLines = [
+    ...typedLines,
+    ...(typedLines.length < TERMINAL_LINES.length
+      ? [TERMINAL_LINES[typedLines.length].slice(0, currentLineChars)]
+      : []),
+  ];
 
   const handleTerminalNext = () => {
-    if (!showAll) {
-      setShowAll(true);
-      sound.complete();
+    if (!typingDone) {
+      // Skip animation - show all immediately
+      setTypedLines(TERMINAL_LINES);
+      setCurrentLineChars(0);
+      setTypingDone(true);
       return;
     }
     sound.complete();
@@ -81,17 +125,20 @@ export function PrologueModal() {
         <span className="text-[10px] text-green-500/60 ml-2 font-mono">aethis-terminal — 执行官接入点</span>
       </div>
 
-      <div className="p-6 font-mono min-h-[300px]">
+      <div className="p-6 font-mono min-h-[320px]">
         {step === 'terminal' && (
           <div className="space-y-1">
-            {displayedLines.map((line, i) => (
-              <p key={i} className="text-sm text-green-400/80">
+            {displayLines.map((line, i) => (
+              <p key={i} className="text-sm text-green-400/80 min-h-[1.25rem]">
                 {line || ' '}
+                {i === displayLines.length - 1 && !typingDone && (
+                  <span className="inline-block w-2 h-4 bg-green-400 animate-pulse ml-0.5 align-middle" />
+                )}
               </p>
             ))}
             <div className="pt-4 flex justify-end">
               <Button variant="ghost" size="sm" onClick={handleTerminalNext}>
-                {showAll ? '> 输入代号' : '> 继续'}
+                {typingDone ? '> 输入代号' : '> 跳过动画'}
               </Button>
             </div>
           </div>
