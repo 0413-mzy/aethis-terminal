@@ -25,12 +25,18 @@ export function GameShell({ children }: { children: ReactNode }) {
     })
   );
 
+  const checkStoryChapter = useGameStore((s) => s.checkStoryChapter);
+
   // Check if character exists, show creation if not
   useEffect(() => {
     if (!character.name) {
       openModal('characterCreation');
+    } else {
+      // Trigger first_visit story chapter on first app load
+      const chapter = checkStoryChapter(character.level);
+      if (chapter) openModal('storyChapter', { chapter });
     }
-  }, [character.name, openModal]);
+  }, [character.name, openModal, checkStoryChapter, character.level]);
 
   // Daily check-in
   useEffect(() => {

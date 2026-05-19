@@ -64,6 +64,7 @@ interface GameState {
   activateShield: () => void;
   consumeShield: () => boolean;
   activateDoubleXP: () => void;
+  consumeDoubleXP: () => boolean;
   isDoubleXPActive: () => boolean;
   toggleFocusMode: () => void;
   checkStoryChapter: (playerLevel: number, bossDefeatedId?: string) => StoryChapter | null;
@@ -231,6 +232,7 @@ export const useGameStore = create<GameState>()(
         set({
           bossDefeatCount: bossDefeatCount + 1,
           bossHistory: [...bossHistory, entry],
+          bossBattle: { ...bossBattle, status: 'defeated' as const, defeatedAt: new Date().toISOString() },
         });
       },
 
@@ -348,6 +350,11 @@ export const useGameStore = create<GameState>()(
         return true;
       },
       activateDoubleXP: () => set({ doubleXpActive: true }),
+      consumeDoubleXP: () => {
+        if (!get().doubleXpActive) return false;
+        set({ doubleXpActive: false });
+        return true;
+      },
       isDoubleXPActive: () => get().doubleXpActive,
       toggleFocusMode: () => set({ focusMode: !get().focusMode }),
 

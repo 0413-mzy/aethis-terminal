@@ -67,10 +67,11 @@ export function useTaskCompletion() {
         gold = Math.round(gold * (1 + comboBonus));
       }
 
-      // Double XP
+      // Double XP (consumed on use)
       if (isDoubleXPActive()) {
         xp = Math.round(xp * 2);
-        addToast({ type: 'info', message: '⚡ 双倍经验生效中！' });
+        useGameStore.getState().consumeDoubleXP();
+        addToast({ type: 'info', message: '⚡ 双倍经验生效！已消耗。' });
       }
 
       completeTask(taskId, xp, gold);

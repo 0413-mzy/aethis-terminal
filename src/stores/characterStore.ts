@@ -75,6 +75,7 @@ export const useCharacterStore = create<CharacterState>()(
       },
 
       gainGold: (amount) => {
+        if (!amount || isNaN(amount) || amount <= 0) return;
         set({
           character: { ...get().character, gold: get().character.gold + amount },
         });
@@ -126,12 +127,14 @@ export const useCharacterStore = create<CharacterState>()(
       },
 
       takeDamage: (amount) => {
+        if (!amount || isNaN(amount) || amount <= 0) return;
         const { character } = get();
         const newHP = Math.max(0, character.currentHP - amount);
         set({ character: { ...character, currentHP: newHP } });
       },
 
       healHP: (amount) => {
+        if (!amount || isNaN(amount) || amount <= 0) return;
         const { character } = get();
         const newHP = Math.min(character.maxHP, character.currentHP + amount);
         set({ character: { ...character, currentHP: newHP } });
@@ -212,10 +215,14 @@ export const useCharacterStore = create<CharacterState>()(
           if (isNaN(state.character.maxHP)) state.character.maxHP = 100;
           if (isNaN(state.character.unspentStatPoints)) state.character.unspentStatPoints = 0;
           const stats = state.character.stats;
-          if (isNaN(stats.strength)) stats.strength = 1;
-          if (isNaN(stats.intelligence)) stats.intelligence = 1;
-          if (isNaN(stats.agility)) stats.agility = 1;
-          if (isNaN(stats.vitality)) stats.vitality = 1;
+          if (!stats || typeof stats !== 'object') {
+            state.character.stats = { strength: 1, intelligence: 1, agility: 1, vitality: 1 };
+          } else {
+            if (isNaN(stats.strength)) stats.strength = 1;
+            if (isNaN(stats.intelligence)) stats.intelligence = 1;
+            if (isNaN(stats.agility)) stats.agility = 1;
+            if (isNaN(stats.vitality)) stats.vitality = 1;
+          }
         }
       },
     }
