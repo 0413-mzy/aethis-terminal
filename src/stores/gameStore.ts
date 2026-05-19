@@ -5,7 +5,7 @@ import { Streak, BossBattle, BossHistoryEntry, Achievement } from '@/types';
 import { shouldSpawnBoss, calculateBossHP } from '@/lib/constants';
 import { BOSSES } from '@/data/bosses';
 import { ACHIEVEMENTS } from '@/data/achievements';
-import { generateDailyQuests, DailyQuestDef, DailyQuestProgress, getDailyQuestDate } from '@/data/dailyQuests';
+import { createDailyQuestProgress, generateDailyQuests, DailyQuestDef, DailyQuestProgress, getDailyQuestDate } from '@/data/dailyQuests';
 import { SkillGem, GEM_DROP_TABLE, DROP_CHANCE } from '@/types/skillGem';
 import { STORY_CHAPTERS, StoryChapter } from '@/data/story';
 
@@ -25,6 +25,7 @@ interface GameState {
   totalGoldEarned: number;
   dailyCheckedIn: boolean;
   dailyRewardClaimed: boolean;
+  dailyRewardDate: string | null;
   dailyQuests: DailyQuestDef[];
   dailyQuestProgress: DailyQuestProgress[];
   dailyQuestDate: string;
@@ -41,6 +42,7 @@ interface GameState {
   incrementTotalCompleted: () => void;
   decrementTotalCompleted: () => void;
   incrementLegendaryCompleted: () => void;
+  decrementLegendaryCompleted: () => void;
   checkDailyCheckin: () => boolean;
   claimDailyReward: () => number;
   checkAndSpawnBoss: (playerLevel: number) => BossBattle | null;
@@ -48,11 +50,12 @@ interface GameState {
   defeatBoss: (stats: { playerLevel: number; xpEarned: number; goldEarned: number; damageDealt: number }) => void;
   clearBoss: () => void;
   applyBossAbility: (abilityId: string) => void;
-  checkAchievements: (playerLevel?: number, playerGold?: number) => Achievement[];
+  checkAchievements: (playerLevel?: number, totalGoldEarned?: number) => Achievement[];
   recordGoldEarned: (amount: number) => void;
+  decrementGoldEarned: (amount: number) => void;
   resetStreak: () => void;
   updateDailyQuestProgress: (taskDifficulty: string, hasTags: boolean, hasSubtasks: boolean, isHighPriority: boolean) => void;
-  claimDailyQuest: (questId: string) => number;
+  claimDailyQuest: (questId: string) => { xp: number; gold: number } | null;
   incrementCombo: () => number;
   resetCombo: () => void;
   tryDropGem: (difficulty: string) => SkillGem | null;
@@ -75,6 +78,8 @@ const defaultStreak: Streak = {
   streakFrozen: false,
 };
 
+const initialDailyQuests = generateDailyQuests();
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -88,8 +93,9 @@ export const useGameStore = create<GameState>()(
       totalGoldEarned: 0,
       dailyCheckedIn: false,
       dailyRewardClaimed: false,
-      dailyQuests: generateDailyQuests(),
-      dailyQuestProgress: [],
+      dailyRewardDate: null,
+      dailyQuests: initialDailyQuests,
+      dailyQuestProgress: createDailyQuestProgress(initialDailyQuests),
       dailyQuestDate: getDailyQuestDate(),
       combo: 0,
       maxCombo: 0,
@@ -144,17 +150,24 @@ export const useGameStore = create<GameState>()(
         set({ totalLegendaryCompleted: get().totalLegendaryCompleted + 1 });
       },
 
+      decrementLegendaryCompleted: () => {
+        set({ totalLegendaryCompleted: Math.max(0, get().totalLegendaryCompleted - 1) });
+      },
+
       checkDailyCheckin: () => {
         const today = getLocalDate();
+        if (get().dailyRewardDate === today || get().dailyRewardClaimed) return false;
         if (get().dailyCheckedIn) return false;
         set({ dailyCheckedIn: true });
         return get().streaks.lastActiveDate !== today;
       },
 
       claimDailyReward: () => {
+        const today = getLocalDate();
+        if (get().dailyRewardDate === today || get().dailyRewardClaimed) return 0;
         const { streaks } = get();
         const gold = Math.min(10 + streaks.currentStreak * 5, 100);
-        set({ dailyRewardClaimed: true });
+        set({ dailyRewardClaimed: true, dailyRewardDate: today });
         return gold;
       },
 
@@ -246,6 +259,11 @@ export const useGameStore = create<GameState>()(
       recordGoldEarned: (amount) => {
         if (!amount || isNaN(amount) || amount <= 0) return;
         set({ totalGoldEarned: get().totalGoldEarned + amount });
+      },
+
+      decrementGoldEarned: (amount) => {
+        if (!amount || isNaN(amount) || amount <= 0) return;
+        set({ totalGoldEarned: Math.max(0, get().totalGoldEarned - amount) });
       },
 
       checkAchievements: (playerLevel?: number, playerGold?: number) => {
@@ -387,7 +405,7 @@ export const useGameStore = create<GameState>()(
         // Reset quests if it's a new day
         if (state.dailyQuestDate !== today) {
           const fresh = generateDailyQuests();
-          const freshProgress = fresh.map((q) => ({ questId: q.id, progress: 0, completed: false, claimed: false }));
+          const freshProgress = createDailyQuestProgress(fresh);
           // Increment progress for the current task on fresh quests
           const updated = freshProgress.map((p) => {
             const q = fresh.find((dq) => dq.id === p.questId);
@@ -415,7 +433,12 @@ export const useGameStore = create<GameState>()(
         }
 
         // Update existing progress
-        const updated = state.dailyQuestProgress.map((p) => {
+        const currentProgress =
+          state.dailyQuestProgress.length === state.dailyQuests.length
+            ? state.dailyQuestProgress
+            : createDailyQuestProgress(state.dailyQuests);
+
+        const updated = currentProgress.map((p) => {
           const q = state.dailyQuests.find((dq) => dq.id === p.questId);
           if (!q || p.completed) return p;
           let shouldIncrement = false;
@@ -443,13 +466,13 @@ export const useGameStore = create<GameState>()(
         const state = get();
         const progress = state.dailyQuestProgress.find((p) => p.questId === questId);
         const quest = state.dailyQuests.find((q) => q.id === questId);
-        if (!progress || !quest || !progress.completed || progress.claimed) return 0;
+        if (!progress || !quest || !progress.completed || progress.claimed) return null;
 
         const updated = state.dailyQuestProgress.map((p) =>
           p.questId === questId ? { ...p, claimed: true } : p
         );
         set({ dailyQuestProgress: updated });
-        return quest.rewardGold + quest.rewardXP; // return total reward
+        return { xp: quest.rewardXP, gold: quest.rewardGold };
       },
     }),
     {
@@ -460,9 +483,19 @@ export const useGameStore = create<GameState>()(
           if (isNaN(state.bossDefeatCount)) state.bossDefeatCount = 0;
           if (isNaN(state.totalGoldEarned)) state.totalGoldEarned = 0;
           if (isNaN(state.totalLegendaryCompleted)) state.totalLegendaryCompleted = 0;
-          // Reset daily state - new day, new check
-          state.dailyCheckedIn = false;
-          state.dailyRewardClaimed = false;
+          const today = getDailyQuestDate();
+          if (!state.dailyQuests || state.dailyQuests.length === 0 || state.dailyQuestDate !== today) {
+            state.dailyQuests = generateDailyQuests();
+            state.dailyQuestProgress = createDailyQuestProgress(state.dailyQuests);
+            state.dailyQuestDate = today;
+          } else if (!state.dailyQuestProgress || state.dailyQuestProgress.length !== state.dailyQuests.length) {
+            state.dailyQuestProgress = createDailyQuestProgress(state.dailyQuests);
+          }
+          if (state.dailyRewardDate !== today) {
+            state.dailyCheckedIn = false;
+            state.dailyRewardClaimed = false;
+            state.dailyRewardDate = null;
+          }
         }
       },
     }

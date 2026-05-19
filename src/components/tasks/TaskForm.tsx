@@ -59,14 +59,19 @@ export function TaskForm({ isOpen, onClose }: TaskFormProps) {
     e.preventDefault();
     if (!title.trim()) return;
 
+    const pendingTag = tagInput.trim();
+    const nextTags = pendingTag && !tags.includes(pendingTag) ? [...tags, pendingTag] : tags;
+    const pendingSubtask = subtaskInput.trim();
+    const nextSubtasks = pendingSubtask ? [...subtasks, pendingSubtask] : subtasks;
+
     addTask({
       title: title.trim(),
       description: description.trim(),
       difficulty,
       priority,
-      tags,
+      tags: nextTags,
       dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-      subtasks: subtasks.map((t) => ({
+      subtasks: nextSubtasks.map((t) => ({
         title: t,
         completed: false,
         id: '',
@@ -79,7 +84,9 @@ export function TaskForm({ isOpen, onClose }: TaskFormProps) {
     setDifficulty('medium');
     setPriority('medium');
     setDueDate('');
+    setTagInput('');
     setTags([]);
+    setSubtaskInput('');
     setSubtasks([]);
     onClose();
   };

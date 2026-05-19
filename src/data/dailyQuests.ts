@@ -44,6 +44,15 @@ export interface DailyQuestProgress {
   claimed: boolean;
 }
 
+export function createDailyQuestProgress(quests: DailyQuestDef[]): DailyQuestProgress[] {
+  return quests.map((quest) => ({
+    questId: quest.id,
+    progress: 0,
+    completed: false,
+    claimed: false,
+  }));
+}
+
 export function getDailyQuestDate(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

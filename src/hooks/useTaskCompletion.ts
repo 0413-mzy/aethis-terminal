@@ -30,7 +30,9 @@ export function useTaskCompletion() {
   const incrementTotalCompleted = useGameStore((s) => s.incrementTotalCompleted);
   const decrementTotalCompleted = useGameStore((s) => s.decrementTotalCompleted);
   const recordGoldEarned = useGameStore((s) => s.recordGoldEarned);
+  const decrementGoldEarned = useGameStore((s) => s.decrementGoldEarned);
   const incrementLegendaryCompleted = useGameStore((s) => s.incrementLegendaryCompleted);
+  const decrementLegendaryCompleted = useGameStore((s) => s.decrementLegendaryCompleted);
   const updateDailyQuestProgress = useGameStore((s) => s.updateDailyQuestProgress);
   const incrementCombo = useGameStore((s) => s.incrementCombo);
   const resetCombo = useGameStore((s) => s.resetCombo);
@@ -150,7 +152,8 @@ export function useTaskCompletion() {
       const updatedChar = useCharacterStore.getState().character;
       const chapter = checkStoryChapter(updatedChar.level);
       if (chapter) openModal('storyChapter', { chapter });
-      const newAchievements = checkAchievements(updatedChar.level, updatedChar.gold);
+      const totalEarned = useGameStore.getState().totalGoldEarned;
+      const newAchievements = checkAchievements(updatedChar.level, totalEarned);
       if (newAchievements.length > 0) {
         for (const achievement of newAchievements) {
           addToast({
@@ -219,8 +222,12 @@ export function useTaskCompletion() {
       sound.undo();
 
       if (xpEarned > 0) loseXP(xpEarned);
-      if (goldEarned > 0) loseGold(goldEarned);
+      if (goldEarned > 0) {
+        loseGold(goldEarned);
+        decrementGoldEarned(goldEarned);
+      }
       decrementTotalCompleted();
+      if (task.difficulty === 'legendary') decrementLegendaryCompleted();
 
       addToast({ type: 'damage', message: `-${xpEarned} 经验，-${goldEarned} 金币（已撤销）` });
 

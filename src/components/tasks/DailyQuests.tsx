@@ -16,18 +16,16 @@ export function DailyQuests() {
 
   if (dailyQuests.length === 0) return null;
 
-  const allClaimed = dailyQuestProgress.every((p) => p.claimed);
-  const allCompleted = dailyQuestProgress.every((p) => p.completed);
+  const allClaimed =
+    dailyQuestProgress.length === dailyQuests.length &&
+    dailyQuestProgress.every((p) => p.claimed);
 
   const handleClaim = (questId: string) => {
     const reward = claimDailyQuest(questId);
-    if (reward > 0) {
+    if (reward) {
       sound.purchase();
-      const quest = dailyQuests.find((q) => q.id === questId);
-      if (quest) {
-        gainXP(quest.rewardXP);
-        gainGold(quest.rewardGold);
-      }
+      gainXP(reward.xp);
+      gainGold(reward.gold);
     }
   };
 
@@ -44,7 +42,6 @@ export function DailyQuests() {
       <div className="space-y-2">
         {dailyQuests.map((quest) => {
           const progress = dailyQuestProgress.find((p) => p.questId === quest.id);
-          const pct = progress ? (progress.progress / quest.target) * 100 : 0;
 
           return (
             <motion.div

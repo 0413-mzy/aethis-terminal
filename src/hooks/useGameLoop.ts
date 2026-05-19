@@ -49,12 +49,20 @@ export function useGameLoop() {
         if (!isOverdue(task.dueDate)) continue;
 
         const damage = calculateDeadlineDamage(task.difficulty, char.stats.agility);
-        useCharacterStore.getState().takeDamage(damage);
-        useUIStore.getState().triggerShake();
-        useUIStore.getState().addToast({
-          type: 'damage',
-          message: `-${damage} 生命：「${task.title}」已逾期！`,
-        });
+        const shielded = useGameStore.getState().consumeShield();
+        if (shielded) {
+          useUIStore.getState().addToast({
+            type: 'info',
+            message: `🛡️ 护盾抵挡了「${task.title}」的逾期伤害！`,
+          });
+        } else {
+          useCharacterStore.getState().takeDamage(damage);
+          useUIStore.getState().triggerShake();
+          useUIStore.getState().addToast({
+            type: 'damage',
+            message: `-${damage} 生命：「${task.title}」已逾期！`,
+          });
+        }
 
         const { character: updatedChar } = useCharacterStore.getState();
         if (updatedChar.currentHP <= 0) {

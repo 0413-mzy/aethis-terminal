@@ -93,6 +93,7 @@ export const TaskCard = memo(function TaskCard({ task }: TaskCardProps) {
     >
       <div className="flex items-start gap-3">
         <button
+          aria-label={isDone ? `撤销完成：${task.title}` : `完成任务：${task.title}`}
           onClick={handleComplete}
           className={`w-5 h-5 rounded border-2 flex-shrink-0 mt-0.5 flex items-center justify-center transition-all cursor-pointer ${
             isDone
@@ -167,6 +168,7 @@ export const TaskCard = memo(function TaskCard({ task }: TaskCardProps) {
         </div>
 
         <button
+          aria-label={`删除任务：${task.title}`}
           onClick={handleDelete}
           className="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-danger)] transition-all p-1 cursor-pointer flex-shrink-0"
         >

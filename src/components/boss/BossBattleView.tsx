@@ -31,13 +31,11 @@ export function BossBattleView() {
   const damageBoss = useGameStore((s) => s.damageBoss);
   const defeatBoss = useGameStore((s) => s.defeatBoss);
   const clearBoss = useGameStore((s) => s.clearBoss);
-  const applyBossAbility = useGameStore((s) => s.applyBossAbility);
   const character = useCharacterStore((s) => s.character);
   const gainXP = useCharacterStore((s) => s.gainXP);
   const gainGold = useCharacterStore((s) => s.gainGold);
   const loseGold = useCharacterStore((s) => s.loseGold);
   const addToast = useUIStore((s) => s.addToast);
-  const triggerShake = useUIStore((s) => s.triggerShake);
   const setView = useUIStore((s) => s.setView);
 
   const [playerCooldown, setPlayerCooldown] = useState(0);
@@ -48,6 +46,9 @@ export function BossBattleView() {
   const [defendCooldown, setDefendCooldown] = useState(0);
   const totalDamageRef = useRef(0);
   const attackLockedRef = useRef(false);
+  const bossTimerRef = useRef(BOSS_ATTACK_INTERVAL);
+  const bossTellActiveRef = useRef(false);
+  const isDefendingRef = useRef(false);
 
   const bossDef = bossBattle ? BOSSES.find((b) => b.id === bossBattle.bossId) : null;
 
@@ -56,6 +57,14 @@ export function BossBattleView() {
   const effectiveCooldown = Math.max(3, BASE_COOLDOWN - intel * 0.5);
   const dodgeChance = Math.min(0.4, agi * 0.05);
   const critChance = Math.min(0.3, intel * 0.04);
+
+  useEffect(() => {
+    isDefendingRef.current = isDefending;
+  }, [isDefending]);
+
+  useEffect(() => {
+    bossTellActiveRef.current = bossTellActive;
+  }, [bossTellActive]);
 
   // Player cooldown
   useEffect(() => {
@@ -73,96 +82,110 @@ export function BossBattleView() {
 
   // Boss timer + tells
   useEffect(() => {
-    const i = setInterval(() => {
-      setBossTimer((prev) => {
-        const next = +(prev - 0.1).toFixed(1);
+    const resetBossTimer = () => {
+      bossTimerRef.current = BOSS_ATTACK_INTERVAL;
+      setBossTimer(BOSS_ATTACK_INTERVAL);
+      bossTellActiveRef.current = false;
+      setBossTellActive(false);
+    };
 
-        // Show tell at TELL_DURATION seconds before attack
-        if (!bossTellActive && next <= TELL_DURATION && next > 0) {
-          setBossTellActive(true);
-        }
+    const fireBossAttack = () => {
+      if (attackLockedRef.current) return;
+      attackLockedRef.current = true;
 
-        if (next > 0) return next;
-
-        // Attack fires
-        if (attackLockedRef.current) return BOSS_ATTACK_INTERVAL;
-        attackLockedRef.current = true;
-
-        const bb = useGameStore.getState().bossBattle;
-        if (!bb || bb.status !== 'active') {
-          attackLockedRef.current = false;
-          return BOSS_ATTACK_INTERVAL;
-        }
-
-        const bossDef2 = BOSSES.find((b) => b.id === bb.bossId);
-        const hpPct = (bb.currentHP / bb.maxHP) * 100;
-        const char = useCharacterStore.getState().character;
-        let rawDamage = calculateBossDamage(char.level, hpPct, bossDef2?.theme || 'fire');
-
-        // Defend halves damage
-        if (isDefending) {
-          rawDamage = Math.round(rawDamage * 0.5);
-          setIsDefending(false);
-          setCombatLog((prev) => ['🛡️ 防御成功！伤害减半', ...prev.slice(0, 4)]);
-        }
-
-        // Dodge check
-        const dodgeRoll = Math.random();
-        if (dodgeRoll < dodgeChance) {
-          sound.dodge();
-          setCombatLog((prev) => [`💨 你闪避了 ${bossDef2?.name} 的攻击！（敏捷 ${(dodgeChance * 100).toFixed(0)}%）`, ...prev.slice(0, 4)]);
-          emitFloatingText('闪避！', window.innerWidth / 2, window.innerHeight * 0.3, '#4ade80');
-          useUIStore.getState().addToast({ type: 'info', message: `💨 闪避了Boss攻击！` });
-
-          setBossTellActive(false);
-          attackLockedRef.current = false;
-          return BOSS_ATTACK_INTERVAL;
-        }
-
-        // Apply damage
-        sound.damage();
-        petMood('sad');
-        useCharacterStore.getState().takeDamage(rawDamage);
-        useUIStore.getState().triggerShake();
-
-        setCombatLog((prev) => [`💥 ${bossDef2?.name} 对你造成 ${rawDamage} 点伤害！`, ...prev.slice(0, 4)]);
-
-        emitFloatingText(`-${rawDamage} HP`, window.innerWidth / 2, window.innerHeight * 0.3, '#ff4444');
-
-        particleEmitters.emit(window.innerWidth / 2, window.innerHeight * 0.3, {
-          count: 15, spread: 60, speed: 3,
-          colors: ['#ff4444', '#8b0000'], size: 5, life: 1.5, gravity: 30,
-        });
-
-        useUIStore.getState().addToast({ type: 'damage', message: `${bossDef2?.name} 攻击造成 ${rawDamage} 伤害！` });
-
-        // Death check
-        const updatedChar = useCharacterStore.getState().character;
-        if (updatedChar.currentHP <= 0) {
-          useCharacterStore.getState().resetAfterDeath();
-          useUIStore.getState().openModal('death');
-          useGameStore.getState().resetStreak();
-        }
-
-        // Random boss ability (25%)
-        const gs = useGameStore.getState();
-        if (gs.bossBattle && gs.bossBattle.activeAbilities.length < 2 && Math.random() < 0.25) {
-          const abilities = bossDef2?.abilities || [];
-          if (abilities.length > 0) {
-            const ability = abilities[Math.floor(Math.random() * abilities.length)];
-            useGameStore.getState().applyBossAbility(ability.id);
-            setCombatLog((prev) => [`⚡ ${bossDef2?.name} 释放了「${ability.name}」！`, ...prev.slice(0, 4)]);
-            useUIStore.getState().addToast({ type: 'damage', message: `⚡ Boss技能: ${ability.name}` });
-          }
-        }
-
-        setBossTellActive(false);
+      const bb = useGameStore.getState().bossBattle;
+      if (!bb || bb.status !== 'active') {
         attackLockedRef.current = false;
-        return BOSS_ATTACK_INTERVAL;
+        resetBossTimer();
+        return;
+      }
+
+      const bossDef2 = BOSSES.find((b) => b.id === bb.bossId);
+      const hpPct = (bb.currentHP / bb.maxHP) * 100;
+      const char = useCharacterStore.getState().character;
+      const currentDodgeChance = Math.min(0.4, char.stats.agility * 0.05);
+      let rawDamage = calculateBossDamage(char.level, hpPct, bossDef2?.theme || 'fire');
+      const nextLogEntries: string[] = [];
+
+      if (isDefendingRef.current) {
+        rawDamage = Math.round(rawDamage * 0.5);
+        isDefendingRef.current = false;
+        setIsDefending(false);
+        nextLogEntries.push('🛡️ 防御成功！伤害减半');
+      }
+
+      if (Math.random() < currentDodgeChance) {
+        sound.dodge();
+        nextLogEntries.unshift(`💨 你闪避了 ${bossDef2?.name} 的攻击！（敏捷 ${(currentDodgeChance * 100).toFixed(0)}%）`);
+        setCombatLog((prev) => [...nextLogEntries, ...prev.slice(0, 5 - nextLogEntries.length)]);
+        emitFloatingText('闪避！', window.innerWidth / 2, window.innerHeight * 0.3, '#4ade80');
+        useUIStore.getState().addToast({ type: 'info', message: '💨 闪避了Boss攻击！' });
+        attackLockedRef.current = false;
+        resetBossTimer();
+        return;
+      }
+
+      sound.damage();
+      petMood('sad');
+      useCharacterStore.getState().takeDamage(rawDamage);
+      useUIStore.getState().triggerShake();
+      nextLogEntries.unshift(`💥 ${bossDef2?.name} 对你造成 ${rawDamage} 点伤害！`);
+      setCombatLog((prev) => [...nextLogEntries, ...prev.slice(0, 5 - nextLogEntries.length)]);
+
+      emitFloatingText(`-${rawDamage} HP`, window.innerWidth / 2, window.innerHeight * 0.3, '#ff4444');
+
+      particleEmitters.emit(window.innerWidth / 2, window.innerHeight * 0.3, {
+        count: 15, spread: 60, speed: 3,
+        colors: ['#ff4444', '#8b0000'], size: 5, life: 1.5, gravity: 30,
       });
+
+      useUIStore.getState().addToast({ type: 'damage', message: `${bossDef2?.name} 攻击造成 ${rawDamage} 伤害！` });
+
+      const updatedChar = useCharacterStore.getState().character;
+      if (updatedChar.currentHP <= 0) {
+        useCharacterStore.getState().resetAfterDeath();
+        useUIStore.getState().openModal('death');
+        useGameStore.getState().resetStreak();
+      }
+
+      const gs = useGameStore.getState();
+      if (gs.bossBattle && gs.bossBattle.activeAbilities.length < 2 && Math.random() < 0.25) {
+        const abilities = bossDef2?.abilities || [];
+        if (abilities.length > 0) {
+          const ability = abilities[Math.floor(Math.random() * abilities.length)];
+          useGameStore.getState().applyBossAbility(ability.id);
+          setCombatLog((prev) => [`⚡ ${bossDef2?.name} 释放了「${ability.name}」！`, ...prev.slice(0, 4)]);
+          useUIStore.getState().addToast({ type: 'damage', message: `⚡ Boss技能: ${ability.name}` });
+        }
+      }
+
+      attackLockedRef.current = false;
+      resetBossTimer();
+    };
+
+    const i = setInterval(() => {
+      if (useUIStore.getState().activeModal === 'death') return;
+
+      const bb = useGameStore.getState().bossBattle;
+      if (!bb || bb.status !== 'active') return;
+
+      const next = +(bossTimerRef.current - 0.1).toFixed(1);
+      bossTimerRef.current = next;
+
+      if (!bossTellActiveRef.current && next <= TELL_DURATION && next > 0) {
+        bossTellActiveRef.current = true;
+        setBossTellActive(true);
+      }
+
+      if (next > 0) {
+        setBossTimer(next);
+        return;
+      }
+
+      fireBossAttack();
     }, 100);
     return () => clearInterval(i);
-  }, [bossTellActive, isDefending]);
+  }, []);
 
   if (!bossBattle || !bossDef) {
     return (

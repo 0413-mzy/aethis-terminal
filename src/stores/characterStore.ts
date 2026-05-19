@@ -40,7 +40,8 @@ export const useCharacterStore = create<CharacterState>()(
 
       gainXP: (amount) => {
         const { character } = get();
-        let { currentXP, level, unspentStatPoints, stats } = character;
+        let { currentXP, level, unspentStatPoints } = character;
+        const { stats } = character;
         currentXP += amount;
         let leveledUp = false;
 
@@ -89,7 +90,8 @@ export const useCharacterStore = create<CharacterState>()(
       loseXP: (amount) => {
         if (!amount || isNaN(amount) || amount < 0) return;
         const { character } = get();
-        let { currentXP, level, unspentStatPoints, stats } = character;
+        let { currentXP, level, unspentStatPoints } = character;
+        const { stats } = character;
         currentXP -= amount;
 
         while (currentXP < 0 && level > 1) {

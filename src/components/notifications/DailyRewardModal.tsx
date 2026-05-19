@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 
 export function DailyRewardModal() {
   const streaks = useGameStore((s) => s.streaks);
+  const claimDailyReward = useGameStore((s) => s.claimDailyReward);
   const gainGold = useCharacterStore((s) => s.gainGold);
   const closeModal = useUIStore((s) => s.closeModal);
 
@@ -28,7 +29,10 @@ export function DailyRewardModal() {
   }, []);
 
   const handleClaim = () => {
-    gainGold(rewardGold);
+    const gold = claimDailyReward();
+    if (gold > 0) {
+      gainGold(gold);
+    }
     closeModal();
   };
 
